@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWS 3-Tier Architecture</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
+
+:root {
+  --bg: #06080f;
+  --vpc-bg: rgba(255,255,255,0.03);
+  --vpc-border: #2a3a52;
+  --web-color: #ff4d00;
+  --app-color: #ff4d00;
+  --db-color: #ff4d00;
+  --tier-header: #c0392b;
+  --ec2-color: #f97316;
+  --elb-color: #9333ea;
+  --aurora-color: #3b82f6;
+  --public-border: #22c55e;
+  --private-border: #3b82f6;
+  --az1-bg: rgba(255,255,255,0.025);
+  --az2-bg: rgba(255,255,255,0.015);
+  --text: #e2e8f0;
+  --muted: #64748b;
+  --arrow: rgba(255,255,255,0.7);
+  --glow-orange: rgba(249,115,22,0.3);
+  --glow-purple: rgba(147,51,234,0.3);
+  --glow-blue: rgba(59,130,246,0.3);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  font-family: 'Rajdhani', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 16px 40px;
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(249,115,22,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse at 0% 100%, rgba(59,130,246,0.04) 0%, transparent 50%);
+}
+
+/* Header */
+.header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.header-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: var(--web-color);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.05em;
+}
+.header-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+  letter-spacing: 0.1em;
+}
+
+/* Outer VPC box */
+.vpc-wrap {
+  border: 1.5px solid var(--vpc-border);
+  border-radius: 16px;
+  background: var(--vpc-bg);
+  padding: 14px;
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  backdrop-filter: blur(4px);
+}
+.vpc-label {
+  position: absolute;
+  top: -12px; left: 18px;
+  background: var(--bg);
+  padding: 2px 12px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: #22c55e;
+  border: 1px solid #22c55e44;
+  border-radius: 4px;
+  letter-spacing: 0.12em;
+}
+
+/* Tier header row */
+.tier-headers {
+  display: grid;
+  grid-template-columns: 90px 1fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-left: 4px;
+}
+.tier-header-spacer { }
+.tier-header {
+  background: var(--tier-header);
+  border-radius: 6px 6px 0 0;
+  text-align: center;
+  padding: 8px 12px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 2px 16px rgba(192,57,43,0.4);
+  position: relative;
+  overflow: hidden;
+}
+.tier-header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+}
+
+/* Main grid: IGW column + 3 tiers */
+.main-grid {
+  display: grid;
+  grid-template-columns: 90px 1fr 1fr 1fr;
+  gap: 10px;
+  align-items: stretch;
+}
+
+/* IGW column */
+.igw-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+.igw-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.igw-box:hover { transform: scale(1.05); }
+.igw-icon-wrap {
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  background: rgba(147,51,234,0.15);
+  border: 2px solid #9333ea;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+  box-shadow: 0 0 20px var(--glow-purple);
+  animation: pulse-purple 3s ease-in-out infinite;
+}
+@keyframes pulse-purple {
+  0%,100% { box-shadow: 0 0 16px var(--glow-purple); }
+  50% { box-shadow: 0 0 28px rgba(147,51,234,0.5); }
+}
+.igw-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  line-height: 1.3;
+}
+.igw-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* Tier columns */
+.tier-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* AZ rows */
+.az-row {
+  border: 1px dashed rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 10px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.3s;
+  min-height: 130px;
+  justify-content: center;
+}
+.az-row:hover { border-color: rgba(255,255,255,0.2); }
+.az-label {
+  position: absolute;
+  top: -9px; left: 10px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  background: var(--bg);
+  padding: 0 6px;
+  letter-spacing: 0.1em;
+}
+
+/* Subnet badge */
+.subnet-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.subnet-badge.public {
+  background: rgba(34,197,94,0.1);
+  border: 1px solid rgba(34,197,94,0.3);
+  color: #22c55e;
+}
+.subnet-badge.private {
+  background: rgba(59,130,246,0.1);
+  border: 1px solid rgba(59,130,246,0.3);
+  color: #60a5fa;
+}
+
+/* Service nodes */
+.svc-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: transform 0.2s;
+  position: relative;
+}
+.svc-node:hover { transform: scale(1.08); }
+
+.svc-icon {
+  width: 52px; height: 52px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  position: relative;
+  overflow: hidden;
+}
+.svc-icon::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent);
+  border-radius: inherit;
+}
+
+.ec2-icon { background: rgba(249,115,22,0.2); border: 2px solid var(--ec2-color); box-shadow: 0 0 14px var(--glow-orange); }
+.elb-icon { background: rgba(147,51,234,0.2); border: 2px solid var(--elb-color); box-shadow: 0 0 14px var(--glow-purple); width: 64px; height: 64px; border-radius: 50%; font-size: 26px; }
+.aurora-icon { background: rgba(59,130,246,0.2); border: 2px solid var(--aurora-color); box-shadow: 0 0 14px var(--glow-blue); }
+
+.svc-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  line-height: 1.3;
+}
+.svc-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 8px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ELB middle column — spans both AZs */
+.elb-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 10px;
+  flex: 1;
+}
+
+/* The arrow SVG overlay */
+.arch-svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* Tooltip */
+.tooltip {
+  display: none;
+  position: fixed;
+  background: #111827;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  padding: 12px 16px;
+  width: 240px;
+  z-index: 200;
+  pointer-events: none;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+}
+.tooltip.show { display: block; }
+.tt-title {
+  font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px;
+}
+.tt-row { font-size: 10px; color: var(--muted); line-height: 1.8; }
+.tt-row strong { color: var(--text); }
+
+/* Legend */
+.legend {
+  display: flex; gap: 20px; flex-wrap: wrap;
+  margin-top: 20px;
+  padding: 12px 20px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--vpc-border);
+  border-radius: 10px;
+  width: 100%; max-width: 960px;
+  align-items: center;
+}
+.legend-title {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.12em;
+  margin-right: 8px;
+}
+.l-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.l-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+/* animate in */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.vpc-wrap { animation: fadeUp 0.6s ease both; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-label">// AWS Cloud Infrastructure</div>
+  <h1>3-Tier Web Architecture</h1>
+  <div class="header-sub">Multi-AZ · High Availability · Auto Scaling</div>
+</div>
+
+<div class="vpc-wrap" id="vpc">
+  <div class="vpc-label">⬡ VPC</div>
+
+  <!-- Tier headers -->
+  <div class="tier-headers">
+    <div class="tier-header-spacer"></div>
+    <div class="tier-header">Web Tier</div>
+    <div class="tier-header">App Tier</div>
+    <div class="tier-header">Database Tier</div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="main-grid" id="main-grid">
+
+    <!-- IGW + ELB column -->
+    <div class="igw-col">
+      <div class="igw-box" data-tip="igw">
+        <div class="igw-icon-wrap">🌐</div>
+        <div class="igw-label">Internet<br>Gateway</div>
+        <div class="igw-sub">igw-xxxx</div>
+      </div>
+      <!-- ELB below IGW -->
+      <div style="width:100%; display:flex; flex-direction:column; gap:8px; margin-top: 10px;">
+        <!-- ELB lives visually between AZ1 and AZ2 rows, placed as a standalone centered node -->
+      </div>
+    </div>
+
+    <!-- Web Tier -->
+    <div class="tier-col">
+      <div class="az-row" id="web-az1">
+        <div class="az-label">AZ1</div>
+        <div class="subnet-badge public">🔓 Public subnet</div>
+        <div class="svc-node" data-tip="ec2-web">
+          <div class="svc-icon ec2-icon">⚙️</div>
+          <div class="svc-label">Amazon EC2</div>
+        </div>
+      </div>
+      <div class="az-row" id="web-az2">
+        <div class="az-label">AZ2</div>
+        <div class="subnet-badge public">🔓 Public subnet</div>
+        <div class="svc-node" data-tip="ec2-web">
+          <div class="svc-icon ec2-icon">⚙️</div>
+          <div class="svc-label">Amazon EC2</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- App Tier -->
+    <div class="tier-col">
+      <div class="az-row" id="app-az1">
+        <div class="az-label">AZ1</div>
+        <div class="subnet-badge private">🔒 Private subnet</div>
+        <div class="svc-node" data-tip="ec2-app">
+          <div class="svc-icon ec2-icon">⚙️</div>
+          <div class="svc-label">Amazon EC2</div>
+        </div>
+      </div>
+      <div class="az-row" id="app-az2">
+        <div class="az-label">AZ2</div>
+        <div class="subnet-badge private">🔒 Private subnet</div>
+        <div class="svc-node" data-tip="ec2-app">
+          <div class="svc-icon ec2-icon">⚙️</div>
+          <div class="svc-label">Amazon EC2</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Database Tier -->
+    <div class="tier-col">
+      <div class="az-row" id="db-az1">
+        <div class="az-label">AZ1</div>
+        <div class="subnet-badge private">🔒 Private subnet</div>
+        <div class="svc-node" data-tip="aurora-primary">
+          <div class="svc-icon aurora-icon">🗄️</div>
+          <div class="svc-label">Amazon Aurora<br>Primary DB</div>
+        </div>
+      </div>
+      <div class="az-row" id="db-az2">
+        <div class="az-label">AZ2</div>
+        <div class="subnet-badge private">🔒 Private subnet</div>
+        <div class="svc-node" data-tip="aurora-replica">
+          <div class="svc-icon aurora-icon" style="border-color:#60a5fa; box-shadow: 0 0 14px rgba(96,165,250,0.25);">🗄️</div>
+          <div class="svc-label">Aurora<br>Read Replica</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main-grid -->
+
+  <!-- ELB overlay — absolutely positioned -->
+  <div id="elb-node" style="position:absolute; left: 0; top:0; pointer-events:none;"></div>
+
+</div><!-- /vpc-wrap -->
+
+<!-- Arrows SVG (drawn by JS) -->
+<svg id="arrow-svg" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50;" overflow="visible">
+  <defs>
+    <marker id="ah-white" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="rgba(255,255,255,0.75)"/>
+    </marker>
+    <marker id="ah-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#60a5fa"/>
+    </marker>
+  </defs>
+</svg>
+
+<!-- ELB floating node (absolutely in vpc-wrap) -->
+
+<!-- Tooltip -->
+<div class="tooltip" id="tooltip">
+  <div class="tt-title" id="tt-title"></div>
+  <div class="tt-row" id="tt-body"></div>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-title">Legend:</div>
+  <div class="l-item"><div class="l-dot" style="background:#f97316"></div>EC2 Compute</div>
+  <div class="l-item"><div class="l-dot" style="background:#9333ea"></div>Load Balancer</div>
+  <div class="l-item"><div class="l-dot" style="background:#3b82f6"></div>Aurora DB</div>
+  <div class="l-item"><div class="l-dot" style="background:#22c55e; border-radius:50%"></div>Public Subnet</div>
+  <div class="l-item"><div class="l-dot" style="background:#60a5fa; border-radius:50%"></div>Private Subnet</div>
+  <div class="l-item" style="margin-left:auto;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--muted)">// Hover components for details</div>
+</div>
+
+<script>
+const tips = {
+  igw: {
+    title: '🌐 Internet Gateway',
+    body: `<strong>Role</strong>: Entry point for all inbound traffic from the internet.<br><strong>Connects to</strong>: ELB across both AZs.<br><strong>Protocol</strong>: HTTP/HTTPS (port 80/443).`
+  },
+  elb: {
+    title: '⚖️ Elastic Load Balancer',
+    body: `<strong>Type</strong>: Application Load Balancer (Layer 7).<br><strong>Spans</strong>: AZ1 + AZ2 for cross-zone balancing.<br><strong>Features</strong>: Health checks, SSL termination, sticky sessions.`
+  },
+  'ec2-web': {
+    title: '⚙️ EC2 — Web Tier',
+    body: `<strong>Subnet</strong>: Public (accepts traffic from ELB).<br><strong>Role</strong>: Serves static assets, proxies to App Tier.<br><strong>Scaling</strong>: Auto Scaling Group, CPU-based policy.`
+  },
+  'ec2-app': {
+    title: '⚙️ EC2 — App Tier',
+    body: `<strong>Subnet</strong>: Private (no direct internet access).<br><strong>Role</strong>: Business logic, API processing.<br><strong>DB Access</strong>: Reads/writes to Aurora Primary.`
+  },
+  'aurora-primary': {
+    title: '🗄️ Aurora Primary DB',
+    body: `<strong>Engine</strong>: Amazon Aurora MySQL/PostgreSQL.<br><strong>Role</strong>: Primary read/write instance.<br><strong>Replication</strong>: Continuously replicates to Read Replica in AZ2.`
+  },
+  'aurora-replica': {
+    title: '🗄️ Aurora Read Replica',
+    body: `<strong>Subnet</strong>: Private (AZ2).<br><strong>Role</strong>: Read-only queries, offloads Primary.<br><strong>Failover</strong>: Auto-promoted to Primary if AZ1 fails.`
+  }
+};
+
+const tooltip = document.getElementById('tooltip');
+
+function showTip(e, key) {
+  const d = tips[key]; if (!d) return;
+  document.getElementById('tt-title').textContent = d.title;
+  document.getElementById('tt-body').innerHTML = d.body;
+  tooltip.classList.add('show');
+  moveTip(e);
+}
+function hideTip() { tooltip.classList.remove('show'); }
+function moveTip(e) {
+  const x = e.clientX + 18, y = e.clientY - 10;
+  tooltip.style.left = (x + 240 > window.innerWidth ? x - 260 : x) + 'px';
+  tooltip.style.top  = (y + 160 > window.innerHeight ? y - 160 : y) + 'px';
+}
+
+document.querySelectorAll('[data-tip]').forEach(el => {
+  el.addEventListener('mouseenter', e => showTip(e, el.dataset.tip));
+  el.addEventListener('mouseleave', hideTip);
+  el.addEventListener('mousemove', moveTip);
+});
+document.addEventListener('mousemove', e => { if (tooltip.classList.contains('show')) moveTip(e); });
+
+// ---- Draw ELB and Arrows using getBoundingClientRect ----
+function midX(el) { const r = el.getBoundingClientRect(); return r.left + r.width/2; }
+function midY(el) { const r = el.getBoundingClientRect(); return r.top + r.height/2; }
+function rightX(el) { return el.getBoundingClientRect().right; }
+function leftX(el) { return el.getBoundingClientRect().left; }
+function topY(el) { return el.getBoundingClientRect().top; }
+function botY(el) { return el.getBoundingClientRect().bottom; }
+
+function drawArrow(svg, x1,y1,x2,y2, color='rgba(255,255,255,0.55)', marker='ah-white', dash='') {
+  const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('x1',x1); line.setAttribute('y1',y1);
+  line.setAttribute('x2',x2); line.setAttribute('y2',y2);
+  line.setAttribute('stroke', color);
+  line.setAttribute('stroke-width', '1.5');
+  line.setAttribute('marker-end', `url(#${marker})`);
+  if (dash) line.setAttribute('stroke-dasharray', dash);
+  svg.appendChild(line);
+}
+
+function drawArrows() {
+  const svg = document.getElementById('arrow-svg');
+  // Clear old
+  while(svg.children.length > 1) svg.removeChild(svg.lastChild);
+
+  const igw = document.querySelector('.igw-icon-wrap');
+  const webAz1Node = document.querySelector('#web-az1 .svc-icon');
+  const webAz2Node = document.querySelector('#web-az2 .svc-icon');
+  const appAz1Node = document.querySelector('#app-az1 .svc-icon');
+  const appAz2Node = document.querySelector('#app-az2 .svc-icon');
+  const dbPrimary  = document.querySelector('#db-az1 .svc-icon');
+  const dbReplica  = document.querySelector('#db-az2 .svc-icon');
+
+  if (!igw || !webAz1Node) return;
+
+  // Place ELB between IGW and Web tier — compute midpoint x between igw right and web-az1 left
+  const elbX = (rightX(igw) + leftX(webAz1Node)) / 2;
+  const elbY = (midY(webAz1Node) + midY(webAz2Node)) / 2;
+
+  // Draw ELB circle
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  g.setAttribute('cursor','pointer');
+  g.addEventListener('mouseenter', e => showTip(e, 'elb'));
+  g.addEventListener('mouseleave', hideTip);
+  g.addEventListener('mousemove', moveTip);
+
+  // glow circle
+  const glow = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  glow.setAttribute('cx', elbX); glow.setAttribute('cy', elbY); glow.setAttribute('r', 36);
+  glow.setAttribute('fill','rgba(147,51,234,0.12)');
+  glow.setAttribute('stroke','rgba(147,51,234,0.3)'); glow.setAttribute('stroke-width','1');
+  g.appendChild(glow);
+
+  const circ = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  circ.setAttribute('cx', elbX); circ.setAttribute('cy', elbY); circ.setAttribute('r', 28);
+  circ.setAttribute('fill','rgba(147,51,234,0.25)');
+  circ.setAttribute('stroke','#9333ea'); circ.setAttribute('stroke-width','2');
+  g.appendChild(circ);
+
+  const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+  txt.setAttribute('x', elbX); txt.setAttribute('y', elbY - 2);
+  txt.setAttribute('text-anchor','middle'); txt.setAttribute('dominant-baseline','middle');
+  txt.setAttribute('font-size','20'); txt.textContent = '⚖️';
+  g.appendChild(txt);
+
+  const lbl = document.createElementNS('http://www.w3.org/2000/svg','text');
+  lbl.setAttribute('x', elbX); lbl.setAttribute('y', elbY + 42);
+  lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('font-size','10');
+  lbl.setAttribute('fill','#e2e8f0'); lbl.setAttribute('font-family','Rajdhani,sans-serif');
+  lbl.setAttribute('font-weight','600'); lbl.textContent = 'Elastic Load Balancer';
+  g.appendChild(lbl);
+
+  const lbl2 = document.createElementNS('http://www.w3.org/2000/svg','text');
+  lbl2.setAttribute('x', elbX); lbl2.setAttribute('y', elbY + 55);
+  lbl2.setAttribute('text-anchor','middle'); lbl2.setAttribute('font-size','9');
+  lbl2.setAttribute('fill','#64748b'); lbl2.setAttribute('font-family','Share Tech Mono,monospace');
+  lbl2.textContent = '(ELB)';
+  g.appendChild(lbl2);
+
+  svg.appendChild(g);
+
+  // IGW → ELB
+  drawArrow(svg, rightX(igw), midY(igw), elbX - 30, elbY);
+
+  // ELB → Web AZ1 EC2
+  drawArrow(svg, elbX + 28, elbY, leftX(webAz1Node), midY(webAz1Node));
+
+  // ELB → Web AZ2 EC2
+  drawArrow(svg, elbX + 28, elbY, leftX(webAz2Node), midY(webAz2Node));
+
+  // Web AZ1 → internal ELB node (between web and app) → App AZ1
+  // Draw a small internal ELB between web and app tiers
+  const intElbX = (rightX(webAz1Node) + leftX(appAz1Node)) / 2;
+  const intElbY = (midY(webAz1Node) + midY(webAz2Node)) / 2;
+
+  // small internal ELB
+  const igSmall = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  igSmall.setAttribute('cx', intElbX); igSmall.setAttribute('cy', intElbY);
+  igSmall.setAttribute('r', 20);
+  igSmall.setAttribute('fill','rgba(147,51,234,0.2)');
+  igSmall.setAttribute('stroke','#9333ea'); igSmall.setAttribute('stroke-width','1.5');
+  svg.appendChild(igSmall);
+
+  const igTxt = document.createElementNS('http://www.w3.org/2000/svg','text');
+  igTxt.setAttribute('x', intElbX); igTxt.setAttribute('y', intElbY);
+  igTxt.setAttribute('text-anchor','middle'); igTxt.setAttribute('dominant-baseline','middle');
+  igTxt.setAttribute('font-size','14'); igTxt.textContent = '⚖️';
+  svg.appendChild(igTxt);
+
+  // Web AZ1 → int ELB
+  drawArrow(svg, rightX(webAz1Node), midY(webAz1Node), intElbX - 22, intElbY);
+  // Web AZ2 → int ELB
+  drawArrow(svg, rightX(webAz2Node), midY(webAz2Node), intElbX - 22, intElbY);
+
+  // int ELB → App AZ1
+  drawArrow(svg, intElbX + 22, intElbY, leftX(appAz1Node), midY(appAz1Node));
+  // int ELB → App AZ2
+  drawArrow(svg, intElbX + 22, intElbY, leftX(appAz2Node), midY(appAz2Node));
+
+  // App AZ1 → DB Primary
+  drawArrow(svg, rightX(appAz1Node), midY(appAz1Node), leftX(dbPrimary), midY(dbPrimary), '#60a5fa', 'ah-blue');
+
+  // App AZ2 → DB Primary (diagonal)
+  drawArrow(svg, rightX(appAz2Node), midY(appAz2Node), leftX(dbPrimary), midY(dbPrimary), '#60a5fa', 'ah-blue');
+
+  // DB Primary → DB Replica (replication)
+  drawArrow(svg, midX(dbPrimary), botY(dbPrimary) + 2, midX(dbReplica), topY(dbReplica) - 2, 'rgba(96,165,250,0.5)', 'ah-blue', '5,4');
+}
+
+// Draw on load and resize
+window.addEventListener('load', () => { setTimeout(drawArrows, 100); });
+window.addEventListener('resize', drawArrows);
+</script>
+</body>
+</html>
